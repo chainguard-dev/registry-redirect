@@ -25,6 +25,7 @@ jobs:
         with:
           version: latest
 
+      - uses: imjasonh/setup-crane@v0.1
       - run: |
           go run . --repo=distroless &
           crane manifest localhost:8080/static
