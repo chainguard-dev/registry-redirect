@@ -18,7 +18,7 @@ gcloud auth application-default login
 terraform init
 ```
 
-Then bild and deploy the service with:
+Then build and deploy the service with:
 
 ```
 $ terraform apply -var project=[MY-PROJECT]
