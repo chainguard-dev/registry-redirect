@@ -1,5 +1,7 @@
 # OCI Registry Redirector
 
+[![ci](https://github.com/chainguard-dev/registry-redirect/actions/workflows/ci.yaml/badge.svg)](https://github.com/chainguard-dev/registry-redirect/actions/workflows/ci.yaml)
+
 This is a simple OCI redirector service that allows for custom domains, including forwarding auth token requests to the original registry.
 
 For example, this is used to serve `distroless.dev/*` as a redirection to `ghcr.io/distroless/*`.
