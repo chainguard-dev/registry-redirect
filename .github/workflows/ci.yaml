@@ -34,7 +34,7 @@ jobs:
       # fmt and check terraform configs
       - run: |
           # Run a local repo for ko build to push to.
-          go install github.com/google/go-containerregistry/cmd/registry
+          go install github.com/google/go-containerregistry/cmd/registry@latest
           registry &
           export KO_DOCKER_REPO=localhost:1338
       - run: |
