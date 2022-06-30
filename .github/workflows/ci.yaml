@@ -1,0 +1,42 @@
+name: ci
+on:
+  push:
+    branches: ['main']
+  pull_request:
+    branches: ['main']
+
+permissions:
+  contents: read
+
+jobs:
+  ci:
+    name: ci
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/setup-go@v3
+        with:
+          go-version: 1.17
+      - uses: actions/checkout@v3
+
+      - run: go build
+
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v3
+        with:
+          version: latest
+
+      - run: |
+          go run . --repo=distroless &
+          crane manifest localhost:8080/static
+
+      # fmt and check terraform configs
+      - run: |
+          # Run a local repo for ko build to push to.
+          go install github.com/google/go-containerregistry/cmd/registry
+          registry &
+          export KO_DOCKER_REPO=localhost:1338
+      - run: |
+          terraform init
+          terraform validate
+          terraform fmt -check -diff
+          # TODO: setup auth, plan and apply to deploy
