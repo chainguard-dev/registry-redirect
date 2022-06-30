@@ -28,6 +28,7 @@ jobs:
       - uses: imjasonh/setup-crane@v0.1
       - run: |
           go run . --repo=distroless &
+          sleep 3 # Wait for registry to come up.
           crane manifest localhost:8080/static
 
       # fmt and check terraform configs
