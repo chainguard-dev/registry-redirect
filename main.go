@@ -45,7 +45,11 @@ func init() {
 func main() {
 	flag.Parse()
 
-	defer logger.Sync()
+	defer func() {
+		if err := logger.Sync(); err != nil {
+			log.Printf("error syncing logs: %v", err)
+		}
+	}()
 
 	http.HandleFunc("/v2/", handler)
 	http.HandleFunc("/token", handler)
@@ -72,7 +76,12 @@ func redact(in http.Header) http.Header {
 }
 
 func handler(w http.ResponseWriter, r *http.Request) {
-	defer logger.Sync()
+	defer func() {
+		if err := logger.Sync(); err != nil {
+			log.Printf("error syncing logs: %v", err)
+		}
+	}()
+
 	logger.Infow("got request",
 		"method", r.Method,
 		"url", r.URL.String(),
