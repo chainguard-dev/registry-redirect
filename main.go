@@ -15,6 +15,8 @@ import (
 	"net/http"
 	"os"
 	"strings"
+
+	"go.uber.org/zap"
 )
 
 // TODO:
@@ -30,8 +32,20 @@ var (
 	gcr = flag.Bool("gcr", false, "if true, use GCR mode")
 )
 
+var logger *zap.SugaredLogger
+
+func init() {
+	l, err := zap.NewProduction(zap.AddCaller())
+	if err != nil {
+		log.Fatalf("setting up zap logger: %v", err)
+	}
+	logger = l.Sugar()
+}
+
 func main() {
 	flag.Parse()
+
+	defer logger.Sync()
 
 	http.HandleFunc("/v2/", handler)
 	http.HandleFunc("/token", handler)
@@ -42,18 +56,27 @@ func main() {
 		http.Handle("/", http.RedirectHandler("https://github.com/"+*repo, http.StatusSeeOther))
 	}
 
-	log.Println("Starting...")
+	logger.Info("Starting...")
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = "8080"
-		log.Printf("Defaulting to port %s", port)
 	}
-	log.Printf("Listening on port %s", port)
-	log.Fatal(http.ListenAndServe(fmt.Sprintf(":%s", port), nil))
+	logger.Infof("Listening on port %s", port)
+	logger.Fatal(http.ListenAndServe(fmt.Sprintf(":%s", port), nil))
+}
+
+func redact(in http.Header) http.Header {
+	h := in.Clone()
+	h.Set("Authorization", "REDACTED")
+	return h
 }
 
 func handler(w http.ResponseWriter, r *http.Request) {
-	log.Println("handler:", r.Method, r.URL)
+	defer logger.Sync()
+	logger.Infow("got request",
+		"method", r.Method,
+		"url", r.URL.String(),
+		"header", redact(r.Header))
 
 	if r.Method != http.MethodGet && r.Method != http.MethodHead {
 		http.Error(w, "registry is read-only", http.StatusBadRequest)
@@ -82,30 +105,42 @@ func proxyV2(w http.ResponseWriter, r *http.Request) {
 		url = "https://ghcr.io/v2/"
 	}
 	req, _ := http.NewRequest(r.Method, url, nil)
+
+	logger.Info("sending request",
+		"method", r.Method,
+		"url", r.URL.String(),
+		"header", redact(r.Header))
+
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 	defer resp.Body.Close()
+
+	logger.Info("got response",
+		"method", r.Method,
+		"url", r.URL.String(),
+		"status", resp.Status,
+		"header", redact(resp.Header))
+
 	for k, v := range resp.Header {
 		for _, vv := range v {
 			if k == "Www-Authenticate" {
-				log.Println("Www-Authenticate:", vv)
 				if *gcr {
 					// GCR's token endpoint is /v2/token, we want callers to hit us at /token.
 					vv = strings.Replace(vv, `realm="https://gcr.io/v2/`, fmt.Sprintf(`realm="https://%s/`, r.Host), 1)
 				} else {
 					vv = strings.Replace(vv, `realm="https://ghcr.io/`, fmt.Sprintf(`realm="https://%s/`, r.Host), 1)
 				}
-				log.Println("CHANGED: Www-Authenticate:", vv)
+				logger.Infof("CHANGED: Www-Authenticate: %s", vv)
 			}
 			w.Header().Add(k, vv)
 		}
 	}
 	w.WriteHeader(resp.StatusCode)
 	if _, err := io.Copy(w, resp.Body); err != nil {
-		log.Printf("ERROR: %v", err)
+		logger.Errorf("Error copying response body: %v", err)
 	}
 }
 
@@ -139,7 +174,7 @@ func proxyToken(w http.ResponseWriter, r *http.Request) {
 	}
 	w.WriteHeader(resp.StatusCode)
 	if _, err := io.Copy(w, resp.Body); err != nil {
-		log.Printf("ERROR: %v", err)
+		logger.Errorf("Error copying response body: %v", err)
 	}
 }
 
@@ -190,7 +225,7 @@ func proxy(w http.ResponseWriter, r *http.Request) {
 	parts := strings.Split(r.URL.Path, "/")
 	if parts[len(parts)-2] != "blobs" {
 		if _, err := io.Copy(w, resp.Body); err != nil {
-			log.Printf("ERROR: %v", err)
+			logger.Errorf("Error copying response body: %v", err)
 		}
 	}
 }
