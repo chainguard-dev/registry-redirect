@@ -57,7 +57,10 @@ func main() {
 	// TODO(jason): Configure this more generally.
 	if *repo == "distroless" {
 		http.Handle("/new", http.RedirectHandler("https://github.com/"+*repo+"/template/generate", http.StatusSeeOther))
-		http.Handle("/", http.RedirectHandler("https://github.com/"+*repo, http.StatusSeeOther))
+		http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+			url := "https://github.com/distroless" + r.URL.Path
+			http.Redirect(w, r, url, http.StatusSeeOther)
+		})
 	}
 
 	logger.Info("Starting...")
