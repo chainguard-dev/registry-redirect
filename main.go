@@ -10,7 +10,6 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"log"
 	"net/http"
 	"os"
@@ -45,12 +44,6 @@ func init() {
 func main() {
 	flag.Parse()
 
-	defer func() {
-		if err := logger.Sync(); err != nil {
-			log.Printf("error syncing logs: %v", err)
-		}
-	}()
-
 	http.HandleFunc("/v2/", handler)
 	http.HandleFunc("/token", handler)
 
@@ -74,17 +67,13 @@ func main() {
 
 func redact(in http.Header) http.Header {
 	h := in.Clone()
-	h.Set("Authorization", "REDACTED")
+	if h.Get("Authorization") != "" {
+		h.Set("Authorization", "REDACTED")
+	}
 	return h
 }
 
 func handler(w http.ResponseWriter, r *http.Request) {
-	defer func() {
-		if err := logger.Sync(); err != nil {
-			log.Printf("error syncing logs: %v", err)
-		}
-	}()
-
 	logger.Infow("got request",
 		"method", r.Method,
 		"url", r.URL.String(),
@@ -96,7 +85,7 @@ func handler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	switch r.URL.Path {
-	case "/v2/":
+	case "/v2", "/v2/":
 		proxyV2(w, r)
 	case "/token":
 		proxyToken(w, r)
@@ -118,19 +107,21 @@ func proxyV2(w http.ResponseWriter, r *http.Request) {
 	}
 	req, _ := http.NewRequest(r.Method, url, nil)
 
-	logger.Info("sending request",
+	logger.Infow("sending request",
 		"method", r.Method,
 		"url", r.URL.String(),
 		"header", redact(r.Header))
+	w.Header().Set("X-Redirected", r.URL.String())
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
+		logger.Errorf("Error sending request: %v", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 	defer resp.Body.Close()
 
-	logger.Info("got response",
+	logger.Infow("got response",
 		"method", r.Method,
 		"url", r.URL.String(),
 		"status", resp.Status,
@@ -139,13 +130,14 @@ func proxyV2(w http.ResponseWriter, r *http.Request) {
 	for k, v := range resp.Header {
 		for _, vv := range v {
 			if k == "Www-Authenticate" {
+				log.Println("=== BEFORE: Www-Authenticate:", vv)
 				if *gcr {
 					// GCR's token endpoint is /v2/token, we want callers to hit us at /token.
 					vv = strings.Replace(vv, `realm="https://gcr.io/v2/`, fmt.Sprintf(`realm="https://%s/`, r.Host), 1)
 				} else {
 					vv = strings.Replace(vv, `realm="https://ghcr.io/`, fmt.Sprintf(`realm="https://%s/`, r.Host), 1)
 				}
-				logger.Infof("CHANGED: Www-Authenticate: %s", vv)
+				log.Println("=== CHANGED: Www-Authenticate:", vv)
 			}
 			w.Header().Add(k, vv)
 		}
@@ -173,12 +165,26 @@ func proxyToken(w http.ResponseWriter, r *http.Request) {
 	req, _ := http.NewRequest(r.Method, url, nil)
 	req.Header = r.Header.Clone()
 
+	logger.Infow("sending request",
+		"method", req.Method,
+		"url", req.URL.String(),
+		"header", redact(req.Header))
+	w.Header().Set("X-Redirected", req.URL.String())
+
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
+		logger.Errorf("Error sending request: %v", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 	defer resp.Body.Close()
+
+	logger.Infow("got response",
+		"method", req.Method,
+		"url", req.URL.String(),
+		"status", resp.Status,
+		"header", redact(resp.Header))
+
 	for k, v := range resp.Header {
 		for _, vv := range v {
 			w.Header().Add(k, vv)
@@ -200,33 +206,80 @@ func proxy(w http.ResponseWriter, r *http.Request) {
 	if *repo != "" {
 		url += *repo + "/"
 	}
-	url += strings.TrimPrefix(r.URL.Path, "/v2/")
+	url += strings.TrimPrefix(r.URL.Path, "/v2/") + "?" + r.URL.Query().Encode()
 	req, _ := http.NewRequest(r.Method, url, nil)
 	req.Header = r.Header.Clone()
 
 	// If the request is coming in without auth, get some auth.
 	// This is useful for testing, but should never happen in real life.
+	// Actually, containerd seems to make unauthenticated HEAD requests before
+	// hitting /v2/, so this might be load-bearing.
 	if req.Header.Get("Authorization") == "" {
-		t, err := getToken(r)
+		t, resp, err := getToken(r)
 		if err != nil {
+			if resp != nil {
+				logger.Infof("Error response getting token: %d %s", resp.StatusCode, resp.Status)
+				http.Error(w, resp.Status, resp.StatusCode)
+				return
+			}
+			logger.Errorf("Error getting token: %v", err)
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
 		req.Header.Set("Authorization", "Bearer "+t)
 	}
 
+	logger.Infow("sending request",
+		"method", req.Method,
+		"url", req.URL.String(),
+		"header", redact(req.Header))
+	w.Header().Set("X-Redirected", req.URL.String())
+
 	resp, err := http.DefaultTransport.RoundTrip(req) // Transport doesn't follow redirects.
 	if err != nil {
+		logger.Errorf("Error sending request: %v", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 	defer resp.Body.Close()
+
+	logger.Infow("got response",
+		"method", r.Method,
+		"url", r.URL.String(),
+		"status", resp.Status,
+		"header", redact(resp.Header))
+
 	for k, v := range resp.Header {
 		for _, vv := range v {
+			if k == "Link" && strings.HasPrefix(vv, "</v2/"+*repo) {
+				log.Println("=== BEFORE: Link:", vv)
+				vv = "</v2" + strings.TrimPrefix(vv, "</v2/"+*repo)
+				log.Println("=== CHANGED: Link:", vv)
+			}
 			w.Header().Add(k, vv)
 		}
 	}
 	w.WriteHeader(resp.StatusCode)
+
+	// If it's a list request, rewrite the response so the name key matches the
+	// user's requested repo, otherwise clients will repeatedly request the
+	// first page looking for their repo's tags.
+	if *repo != "" && strings.Contains(r.URL.Path, "/tags/list") {
+		var lr listResponse
+		if err := json.NewDecoder(resp.Body).Decode(&lr); err != nil {
+			logger.Errorf("Error decoding list response body: %v", err)
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		log.Println("=== BEFORE: Name:", lr.Name)
+		lr.Name = strings.Replace(lr.Name, *repo+"/", "", 1)
+		log.Println("=== CHANGED: Name:", lr.Name)
+		if err := json.NewEncoder(w).Encode(lr); err != nil {
+			logger.Errorf("Error encoding list response body: %v", err)
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
+		return
+	}
 
 	// Unless we're serving blobs, also proxy the response body, if any.
 	// Most of the time blob responses will just be 302 redirects to
@@ -242,7 +295,7 @@ func proxy(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func getToken(r *http.Request) (string, error) {
+func getToken(r *http.Request) (string, *http.Response, error) {
 	parts := strings.Split(r.URL.Path, "/")
 	parts = parts[2 : len(parts)-2]
 	if *repo != "" {
@@ -258,18 +311,22 @@ func getToken(r *http.Request) (string, error) {
 	req.Header = r.Header.Clone()
 	resp, err := http.DefaultClient.Do(req) //nolint:gosec
 	if err != nil {
-		return "", err
+		return "", nil, err
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		all, _ := ioutil.ReadAll(resp.Body)
-		return "", fmt.Errorf("GET %s: %d %s", url, resp.StatusCode, string(all))
+		return "", resp, fmt.Errorf("Error getting token: %v", resp.Status)
 	}
 	var t struct {
 		Token string `json:"token"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&t); err != nil {
-		return "", err
+		return "", nil, err
 	}
-	return t.Token, nil
+	return t.Token, nil, nil
+}
+
+type listResponse struct {
+	Name string   `json:"name"`
+	Tags []string `json:"tags"`
 }
