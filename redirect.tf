@@ -8,6 +8,10 @@ terraform {
       source  = "hashicorp/google"
       version = "4.26.0"
     }
+    google-beta = {
+      source  = "hashicorp/google-beta"
+      version = "4.26.0"
+    }
   }
 }
 
@@ -27,9 +31,33 @@ provider "google" {
   project = var.project
 }
 
+provider "google-beta" {
+  project = var.project
+}
+
+// Enable Cloud Run API.
+resource "google_project_service" "run" {
+  service = "run.googleapis.com"
+}
+
+// Enable Compute Engine API.
+resource "google_project_service" "compute" {
+  service = "compute.googleapis.com"
+}
+
+// The service runs as a minimal service account with no permissions in the project.
+resource "google_service_account" "sa" {
+  account_id   = "redirect-sa"
+  display_name = "Minimal Service Account"
+}
+
 resource "ko_image" "redirect" {
   importpath = "github.com/chainguard-dev/registry-redirect"
 }
+
+/////
+// Legacy single-region app
+/////
 
 resource "google_cloud_run_service" "svc" {
   name     = "redirect"
@@ -46,6 +74,7 @@ resource "google_cloud_run_service" "svc" {
     percent         = 100
     latest_revision = true
   }
+  depends_on = [google_project_service.run]
 }
 
 output "url" {
@@ -67,11 +96,51 @@ resource "google_cloud_run_service_iam_policy" "noauth" {
   policy_data = data.google_iam_policy.noauth.policy_data
 }
 
-// The service runs as a minimal service account with no permissions in the project.
+/////
+// New hotness multi-region app.
+/////
 
-resource "google_service_account" "sa" {
-  account_id   = "redirect-sa"
-  display_name = "Minimal Service Account"
+resource "google_cloud_run_service" "regions" {
+  for_each = var.regions
+
+  name     = each.key
+  location = each.key
+  template {
+    spec {
+      containers {
+        image = ko_image.redirect.image_ref
+        env {
+          name  = "REGION"
+          value = each.key
+        }
+      }
+      service_account_name = google_service_account.sa.email
+    }
+  }
+  traffic {
+    percent         = 100
+    latest_revision = true
+  }
+
+  depends_on = [google_project_service.run]
 }
 
-// TODO: domain mapping
+// Output each service URL.
+output "urls" {
+  value = {
+    for reg in google_cloud_run_service.regions :
+    reg.name => reg.status[0].url
+  }
+}
+
+// Make each service invokable by all users.
+resource "google_cloud_run_service_iam_member" "allUsers" {
+  for_each = google_cloud_run_service.regions
+
+  service  = google_cloud_run_service.regions[each.key].name
+  location = each.key
+  role     = "roles/run.invoker"
+  member   = "allUsers"
+
+  depends_on = [google_cloud_run_service.regions]
+}
