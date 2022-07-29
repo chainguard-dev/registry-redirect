@@ -69,7 +69,7 @@ resource "google_cloud_run_service" "regions" {
           value = each.key
         }
       }
-      service_account_name = google_service_account.sa.email
+      service_account_name  = google_service_account.sa.email
       container_concurrency = 1000
     }
   }
