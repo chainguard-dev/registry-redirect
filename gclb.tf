@@ -8,10 +8,9 @@ variable "regions" {
 }
 
 variable "domains" {
-  type = list(any)
+  type = list(string)
   default = [
     "distroless.dev",
-    "new.distroless.dev",
   ]
 }
 
