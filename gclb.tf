@@ -8,16 +8,33 @@ variable "regions" {
 }
 
 variable "domains" {
-  type    = list(any)
-  default = ["distroless.dev"]
+  type = list(any)
+  default = [
+    "distroless.dev",
+    "new.distroless.dev",
+  ]
+}
+
+// Generate a random certificate name that changes whenever var.domains changes.
+resource "random_id" "certificate" {
+  byte_length = 2
+  prefix      = "global-"
+  keepers = {
+    domains = join(",", var.domains)
+  }
 }
 
 resource "google_compute_managed_ssl_certificate" "global" {
   provider = google-beta
 
-  name = "global"
+  name = random_id.certificate.hex
   managed {
     domains = var.domains
+  }
+  // If the cert changed, it's because the domains that feed into the random
+  // cert name were changed. Create the new cert before destroying the old one.
+  lifecycle {
+    create_before_destroy = true
   }
 }
 
@@ -26,11 +43,22 @@ resource "google_compute_global_address" "global" {
   name = "address"
 }
 
+output "global_ip" {
+  value = google_compute_global_address.global.address
+}
+
+resource "google_compute_global_forwarding_rule" "global" {
+  name       = "global"
+  target     = google_compute_target_https_proxy.global.id
+  port_range = "443"
+  ip_address = google_compute_global_address.global.address
+}
+
 resource "google_compute_url_map" "global" {
   provider = google-beta
 
   name            = "global"
-  description     = "a description"
+  description     = "direct traffic to the backend service"
   default_service = google_compute_backend_service.global.id
 }
 
