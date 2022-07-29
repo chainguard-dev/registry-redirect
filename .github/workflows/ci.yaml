@@ -39,4 +39,5 @@ jobs:
           terraform init
           terraform validate
           terraform fmt -check -diff
-          # TODO: setup auth, plan and apply to deploy
+      - uses: aquasecurity/tfsec-action@v1.0.0
+
