@@ -55,51 +55,6 @@ resource "ko_image" "redirect" {
   importpath = "github.com/chainguard-dev/registry-redirect"
 }
 
-/////
-// Legacy single-region app
-/////
-
-resource "google_cloud_run_service" "svc" {
-  name     = "redirect"
-  location = var.region
-  template {
-    spec {
-      containers {
-        image = ko_image.redirect.image_ref
-      }
-      service_account_name = google_service_account.sa.email
-    }
-  }
-  traffic {
-    percent         = 100
-    latest_revision = true
-  }
-  depends_on = [google_project_service.run]
-}
-
-output "url" {
-  value = google_cloud_run_service.svc.status[0].url
-}
-
-// Anybody can access the service.
-data "google_iam_policy" "noauth" {
-  binding {
-    role    = "roles/run.invoker"
-    members = ["allUsers"]
-  }
-}
-
-resource "google_cloud_run_service_iam_policy" "noauth" {
-  location    = google_cloud_run_service.svc.location
-  project     = google_cloud_run_service.svc.project
-  service     = google_cloud_run_service.svc.name
-  policy_data = data.google_iam_policy.noauth.policy_data
-}
-
-/////
-// New hotness multi-region app.
-/////
-
 resource "google_cloud_run_service" "regions" {
   for_each = var.regions
 
