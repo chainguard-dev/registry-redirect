@@ -11,6 +11,7 @@ variable "domains" {
   type = list(string)
   default = [
     "distroless.dev",
+    "images.wolfi.dev",
   ]
 }
 
