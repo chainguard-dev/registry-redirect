@@ -1,6 +1,6 @@
 resource "google_logging_project_sink" "bq_sink" {
-  name                   = "bq-sink"
-  description            = "collecting requests"
+  name        = "bq-sink"
+  description = "collecting requests"
 
   bigquery_options {
     use_partitioned_tables = false
