@@ -20,6 +20,7 @@ jobs:
       - uses: actions/checkout@v3
 
       - run: go build
+      - run: go test ./...
 
       - name: golangci-lint
         uses: golangci/golangci-lint-action@v3
