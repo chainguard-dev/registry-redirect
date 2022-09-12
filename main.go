@@ -29,6 +29,16 @@ var (
 
 	// TODO(jason): Support arbitrary registries.
 	gcr = flag.Bool("gcr", false, "if true, use GCR mode")
+
+	// prefix is the user-visible repo prefix.
+	// For example, if repo is "distroless" and prefix is "unicorns",
+	// users hitting example.dev/unicorns/foo/bar will be redirected to
+	// ghcr.io/distroless/foo/bar.
+	// If prefix is unset, hitting example.dev/unicorns/foo/bar will
+	// redirect to ghcr.io/unicorns/foo/bar.
+	// If prefix is set, users must hit example.dev/unicorns/*; any other request
+	// will 404.
+	prefix = flag.String("prefix", "", "if set, user-visible repo prefix")
 )
 
 var logger *zap.SugaredLogger
@@ -150,6 +160,11 @@ func proxyV2(w http.ResponseWriter, r *http.Request) {
 
 func proxyToken(w http.ResponseWriter, r *http.Request) {
 	vals := r.URL.Query()
+	if *prefix != "" {
+		scope := vals.Get("scope")
+		scope = strings.Replace(scope, *prefix+"/", "", 1)
+		vals.Set("scope", scope)
+	}
 	if *repo != "" {
 		scope := vals.Get("scope")
 		scope = strings.Replace(scope, "repository:", "repository:"+*repo+"/", 1)
@@ -206,7 +221,12 @@ func proxy(w http.ResponseWriter, r *http.Request) {
 	if *repo != "" {
 		url += *repo + "/"
 	}
-	url += strings.TrimPrefix(r.URL.Path, "/v2/") + "?" + r.URL.Query().Encode()
+	path := strings.TrimPrefix(r.URL.Path, "/v2/")
+	if !strings.HasPrefix(path, *prefix+"/") {
+		http.Error(w, "not found", http.StatusNotFound)
+	}
+	path = strings.TrimPrefix(path, *prefix+"/")
+	url += path + "?" + r.URL.Query().Encode()
 	req, _ := http.NewRequest(r.Method, url, nil)
 	req.Header = r.Header.Clone()
 
@@ -298,6 +318,13 @@ func proxy(w http.ResponseWriter, r *http.Request) {
 func getToken(r *http.Request) (string, *http.Response, error) {
 	parts := strings.Split(r.URL.Path, "/")
 	parts = parts[2 : len(parts)-2]
+	if *prefix != "" {
+		if parts[0] == *prefix {
+			parts = parts[1:]
+		} else {
+			return "", nil, fmt.Errorf("request path does not match prefix: %s", parts)
+		}
+	}
 	if *repo != "" {
 		parts = append([]string{*repo}, parts...)
 	}
