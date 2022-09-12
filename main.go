@@ -48,7 +48,7 @@ func main() {
 	if *gcr {
 		host = "gcr.io"
 	}
-	r := redirect.New(host, *repo, "")
+	r := redirect.New(host, *repo, *prefix)
 	http.Handle("/", r)
 
 	port := os.Getenv("PORT")
