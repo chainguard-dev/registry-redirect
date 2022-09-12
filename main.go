@@ -29,6 +29,17 @@ var (
 
 	// TODO(jason): Support arbitrary registries.
 	gcr = flag.Bool("gcr", false, "if true, use GCR mode")
+
+	// prefix is the user-visible repo prefix.
+	// For example, if repo is "distroless" and prefix is "unicorns",
+	// users hitting example.dev/unicorns/foo/bar will be redirected to
+	// ghcr.io/distroless/foo/bar.
+	// If prefix is unset, hitting example.dev/unicorns/foo/bar will
+	// redirect to ghcr.io/unicorns/foo/bar.
+	// If prefix is set, and users hit a path without the prefix, it's ignored:
+	// - example.dev/foo/bar -> ghcr.io/distroless/foo/bar
+	// (this is for backward compatibility with prefix-less redirects)
+	prefix = flag.String("prefix", "", "if set, user-visible repo prefix")
 )
 
 var logger *zap.SugaredLogger
@@ -150,6 +161,11 @@ func proxyV2(w http.ResponseWriter, r *http.Request) {
 
 func proxyToken(w http.ResponseWriter, r *http.Request) {
 	vals := r.URL.Query()
+	if *prefix != "" {
+		scope := vals.Get("scope")
+		scope = strings.Replace(scope, *prefix+"/", "", 1)
+		vals.Set("scope", scope)
+	}
 	if *repo != "" {
 		scope := vals.Get("scope")
 		scope = strings.Replace(scope, "repository:", "repository:"+*repo+"/", 1)
@@ -206,7 +222,13 @@ func proxy(w http.ResponseWriter, r *http.Request) {
 	if *repo != "" {
 		url += *repo + "/"
 	}
-	url += strings.TrimPrefix(r.URL.Path, "/v2/") + "?" + r.URL.Query().Encode()
+	path := strings.TrimPrefix(r.URL.Path, "/v2/")
+	if *prefix != "" {
+		// Trim the prefix, if any.
+		// If the path didn't have the prefix, that's fine for now too.
+		path = strings.TrimPrefix(path, *prefix+"/")
+	}
+	url += path + "?" + r.URL.Query().Encode()
 	req, _ := http.NewRequest(r.Method, url, nil)
 	req.Header = r.Header.Clone()
 
@@ -298,6 +320,9 @@ func proxy(w http.ResponseWriter, r *http.Request) {
 func getToken(r *http.Request) (string, *http.Response, error) {
 	parts := strings.Split(r.URL.Path, "/")
 	parts = parts[2 : len(parts)-2]
+	if *prefix != "" && parts[0] == *prefix {
+		parts = parts[1:]
+	}
 	if *repo != "" {
 		parts = append([]string{*repo}, parts...)
 	}
@@ -307,7 +332,7 @@ func getToken(r *http.Request) (string, *http.Response, error) {
 	} else {
 		url = fmt.Sprintf("https://ghcr.io/token?scope=repository:%s:pull&service=ghcr.io", strings.Join(parts, "/"))
 	}
-	req, _ := http.NewRequest(r.Method, url, nil)
+	req, _ := http.NewRequest(http.MethodGet, url, nil)
 	req.Header = r.Header.Clone()
 	resp, err := http.DefaultClient.Do(req) //nolint:gosec
 	if err != nil {
