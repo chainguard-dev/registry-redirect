@@ -36,8 +36,9 @@ var (
 	// ghcr.io/distroless/foo/bar.
 	// If prefix is unset, hitting example.dev/unicorns/foo/bar will
 	// redirect to ghcr.io/unicorns/foo/bar.
-	// If prefix is set, users must hit example.dev/unicorns/*; any other request
-	// will 404.
+	// If prefix is set, and users hit a path without the prefix, it's ignored:
+	// - example.dev/foo/bar -> ghcr.io/distroless/foo/bar
+	// (this is for backward compatibility with prefix-less redirects)
 	prefix = flag.String("prefix", "", "if set, user-visible repo prefix")
 )
 
@@ -222,11 +223,11 @@ func proxy(w http.ResponseWriter, r *http.Request) {
 		url += *repo + "/"
 	}
 	path := strings.TrimPrefix(r.URL.Path, "/v2/")
-	if *prefix != "" && !strings.HasPrefix(path, *prefix+"/") {
-		http.Error(w, "not found", http.StatusNotFound)
-		return
+	if *prefix != "" {
+		// Trim the prefix, if any.
+		// If the path didn't have the prefix, that's fine for now too.
+		path = strings.TrimPrefix(path, *prefix+"/")
 	}
-	path = strings.TrimPrefix(path, *prefix+"/")
 	url += path + "?" + r.URL.Query().Encode()
 	req, _ := http.NewRequest(r.Method, url, nil)
 	req.Header = r.Header.Clone()
@@ -319,12 +320,8 @@ func proxy(w http.ResponseWriter, r *http.Request) {
 func getToken(r *http.Request) (string, *http.Response, error) {
 	parts := strings.Split(r.URL.Path, "/")
 	parts = parts[2 : len(parts)-2]
-	if *prefix != "" {
-		if parts[0] == *prefix {
-			parts = parts[1:]
-		} else {
-			return "", nil, fmt.Errorf("request path does not match prefix: %s", parts)
-		}
+	if *prefix != "" && parts[0] == *prefix {
+		parts = parts[1:]
 	}
 	if *repo != "" {
 		parts = append([]string{*repo}, parts...)
