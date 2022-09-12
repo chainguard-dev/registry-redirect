@@ -222,8 +222,9 @@ func proxy(w http.ResponseWriter, r *http.Request) {
 		url += *repo + "/"
 	}
 	path := strings.TrimPrefix(r.URL.Path, "/v2/")
-	if !strings.HasPrefix(path, *prefix+"/") {
+	if *prefix != "" && !strings.HasPrefix(path, *prefix+"/") {
 		http.Error(w, "not found", http.StatusNotFound)
+		return
 	}
 	path = strings.TrimPrefix(path, *prefix+"/")
 	url += path + "?" + r.URL.Query().Encode()
@@ -334,7 +335,7 @@ func getToken(r *http.Request) (string, *http.Response, error) {
 	} else {
 		url = fmt.Sprintf("https://ghcr.io/token?scope=repository:%s:pull&service=ghcr.io", strings.Join(parts, "/"))
 	}
-	req, _ := http.NewRequest(r.Method, url, nil)
+	req, _ := http.NewRequest(http.MethodGet, url, nil)
 	req.Header = r.Header.Clone()
 	resp, err := http.DefaultClient.Do(req) //nolint:gosec
 	if err != nil {
