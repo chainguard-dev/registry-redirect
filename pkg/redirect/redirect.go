@@ -11,7 +11,6 @@ import (
 	"io"
 	"log"
 	"net/http"
-	"os"
 	"strings"
 
 	"github.com/gorilla/mux"
@@ -204,6 +203,7 @@ func (rdr redirect) proxy(w http.ResponseWriter, r *http.Request) {
 	// Actually, containerd seems to make unauthenticated HEAD requests before
 	// hitting /v2/, so this might be load-bearing.
 	if req.Header.Get("Authorization") == "" {
+		logger.Warnw("request without Authorization header, getting auth")
 		t, resp, err := rdr.getToken(r)
 		if err != nil {
 			if resp != nil {
@@ -240,11 +240,22 @@ func (rdr redirect) proxy(w http.ResponseWriter, r *http.Request) {
 
 	for k, v := range resp.Header {
 		for _, vv := range v {
+			// List responses include a response header to support pagination, that looks like:
+			//   Link: </v2/distroless/static/tags/list?n=100&last=blah>; rel="next">
+			//
+			// In order for the client to be able to use this link, we need to rewrite it to
+			// point to the user's requested repo, not the upstream:
+			//   Link: </v2[/prefix]/static/repo/tags/list?n=100&last=blah>; rel="next">
 			if k == "Link" && strings.HasPrefix(vv, "</v2/"+rdr.repo) {
 				log.Println("=== BEFORE: Link:", vv)
-				vv = "</v2" + strings.TrimPrefix(vv, "</v2/"+rdr.repo)
+				rest := strings.TrimPrefix(vv, "</v2/"+rdr.repo)
+				vv = "</v2" + rest
+				if rdr.prefix != "" {
+					vv = "</v2/" + rdr.prefix + rest
+				}
 				log.Println("=== CHANGED: Link:", vv)
 			}
+
 			w.Header().Add(k, vv)
 		}
 	}
@@ -255,7 +266,7 @@ func (rdr redirect) proxy(w http.ResponseWriter, r *http.Request) {
 	// first page looking for their repo's tags.
 	if rdr.repo != "" && strings.Contains(r.URL.Path, "/tags/list") {
 		var lr listResponse
-		if err := json.NewDecoder(io.TeeReader(resp.Body, os.Stdout)).Decode(&lr); err != nil {
+		if err := json.NewDecoder(resp.Body).Decode(&lr); err != nil {
 			logger.Errorf("Error decoding list response body: %v", err)
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
