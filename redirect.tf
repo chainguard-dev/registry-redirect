@@ -6,11 +6,7 @@ terraform {
     }
     google = {
       source  = "hashicorp/google"
-      version = "4.26.0"
-    }
-    google-beta = {
-      source  = "hashicorp/google-beta"
-      version = "4.26.0"
+      version = "~> 4.36.0"
     }
   }
 }
@@ -22,16 +18,8 @@ provider "ko" {
 variable "project" {
   type = string
 }
-variable "region" {
-  type    = string
-  default = "us-east4"
-}
 
 provider "google" {
-  project = var.project
-}
-
-provider "google-beta" {
   project = var.project
 }
 
@@ -68,6 +56,10 @@ resource "google_cloud_run_service" "regions" {
           name  = "REGION"
           value = each.key
         }
+        args = [
+          "--prefix",
+          "chainguard",
+        ]
       }
       service_account_name  = google_service_account.sa.email
       container_concurrency = 1000
@@ -77,6 +69,10 @@ resource "google_cloud_run_service" "regions" {
     percent         = 100
     latest_revision = true
   }
+
+  // This is supposed to prevent permanent "Still modifying..." states.
+  // See https://github.com/hashicorp/terraform-provider-google/issues/9438
+  autogenerate_revision_name = true
 
   depends_on = [google_project_service.run]
 }
