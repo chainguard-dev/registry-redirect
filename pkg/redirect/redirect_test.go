@@ -92,7 +92,7 @@ func TestPrefixlessHosts(t *testing.T) {
 			}
 
 			link := resp.Header.Get("Link")
-			if strings.Contains(link, `; rel="next"`) {
+			if strings.Contains(link, `>; rel="next"`) {
 				t.Logf("got Link next header: %s", resp.Header.Get("Link"))
 				next := strings.TrimPrefix(link, "<")
 				next = next[:strings.Index(next, ">")]
