@@ -25,8 +25,6 @@ resource "random_id" "certificate" {
 }
 
 resource "google_compute_managed_ssl_certificate" "global" {
-  provider = google-beta
-
   name = random_id.certificate.hex
   managed {
     domains = var.domains
@@ -55,18 +53,15 @@ resource "google_compute_global_forwarding_rule" "global" {
 }
 
 resource "google_compute_url_map" "global" {
-  provider = google-beta
-
   name            = "global"
   description     = "direct traffic to the backend service"
   default_service = google_compute_backend_service.global.id
 }
 
 resource "google_compute_target_https_proxy" "global" {
-  provider = google-beta
+  name    = "global"
+  url_map = google_compute_url_map.global.id
 
-  name             = "global"
-  url_map          = google_compute_url_map.global.id
   ssl_certificates = [google_compute_managed_ssl_certificate.global.id]
 }
 

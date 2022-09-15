@@ -13,10 +13,6 @@ trap 'kill $PID' EXIT
 
 sleep 3  # Server isn't immediately ready.
 
-crane digest localhost:8080/nginx
-crane manifest localhost:8080/nginx
-crane ls localhost:8080/nginx
-
 crane digest localhost:8080/unicorns/nginx
 crane manifest localhost:8080/unicorns/nginx
 crane ls localhost:8080/unicorns/nginx

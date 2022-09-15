@@ -17,6 +17,11 @@ import (
 	"knative.dev/pkg/logging"
 )
 
+var prefixlessHosts = map[string]bool{
+	"distroless.dev":   true,
+	"images.wolfi.dev": true,
+}
+
 func redact(in http.Header) http.Header {
 	h := in.Clone()
 	if h.Get("Authorization") != "" {
@@ -32,6 +37,8 @@ func New(host, repo, prefix string) http.Handler {
 		prefix: prefix,
 	}
 	router := mux.NewRouter()
+
+	router.Handle("/", http.RedirectHandler("https://github.com/distroless", http.StatusTemporaryRedirect))
 
 	router.HandleFunc("/v2", rdr.v2)
 	router.HandleFunc("/v2/", rdr.v2)
@@ -185,10 +192,16 @@ func (rdr redirect) proxy(w http.ResponseWriter, r *http.Request) {
 	}
 
 	path := strings.TrimPrefix(r.URL.Path, "/v2/")
-	if rdr.prefix != "" {
-		// Trim the prefix, if any.
-		// If the path didn't have the prefix, that's fine for now too.
+	if rdr.prefix != "" && !prefixlessHosts[r.Host] {
+		log.Println("=== BEFORE: path:", path)
+		// Require and trim the prefix, if the request isn't coming from a prefixless host.
+		if !strings.HasPrefix(path, rdr.prefix+"/") {
+			w.WriteHeader(http.StatusNotFound)
+			fmt.Fprintln(w, `{"errors":[{"code":"MANIFEST_UNKNOWN","message":"Manifest unknown, prefix required"}]}`)
+			return
+		}
 		path = strings.TrimPrefix(path, rdr.prefix+"/")
+		log.Println("=== AFTER: path:", path)
 	}
 
 	url += path
