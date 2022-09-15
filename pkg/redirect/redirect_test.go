@@ -91,7 +91,25 @@ func TestPrefixlessHosts(t *testing.T) {
 				t.Errorf("got error %v, want %v; %s", gotErr, c.wantErr, string(all))
 			}
 
-			t.Logf("got Link next header: %s", resp.Header.Get("Link"))
+			link := resp.Header.Get("Link")
+			if strings.Contains(link, `; rel="next"`) {
+				t.Logf("got Link next header: %s", resp.Header.Get("Link"))
+				next := strings.TrimPrefix(link, "<")
+				next = next[:strings.Index(next, ">")]
+
+				req, err = http.NewRequest(http.MethodGet, s.URL+next, nil)
+				if err != nil {
+					t.Fatalf("creating request: %v", err)
+				}
+				req.Host = c.reqHost
+				resp, err := http.DefaultClient.Do(req)
+				if err != nil {
+					t.Fatalf("request: %v", err)
+				}
+				if resp.StatusCode != http.StatusOK {
+					t.Errorf("listing next page; got status %v, want %v", resp.StatusCode, http.StatusOK)
+				}
+			}
 		})
 	}
 }
