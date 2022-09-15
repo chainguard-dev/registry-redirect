@@ -16,7 +16,7 @@ resource "google_certificate_manager_dns_authorization" "this" {
   for_each = toset(var.new_domains)
   name     = replace("${each.key}", ".", "-")
   domain   = each.key
-  labels = {}
+  labels   = {}
 }
 
 resource "google_certificate_manager_certificate" "cert" {
