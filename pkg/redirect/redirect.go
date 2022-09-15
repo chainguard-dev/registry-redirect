@@ -263,7 +263,7 @@ func (rdr redirect) proxy(w http.ResponseWriter, r *http.Request) {
 				log.Println("=== BEFORE: Link:", vv)
 				rest := strings.TrimPrefix(vv, "</v2/"+rdr.repo)
 				vv = "</v2" + rest
-				if rdr.prefix != "" {
+				if rdr.prefix != "" && !prefixlessHosts[r.Host] {
 					vv = "</v2/" + rdr.prefix + rest
 				}
 				log.Println("=== CHANGED: Link:", vv)

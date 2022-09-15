@@ -90,6 +90,8 @@ func TestPrefixlessHosts(t *testing.T) {
 				all, _ := io.ReadAll(resp.Body)
 				t.Errorf("got error %v, want %v; %s", gotErr, c.wantErr, string(all))
 			}
+
+			t.Logf("got Link next header: %s", resp.Header.Get("Link"))
 		})
 	}
 }
