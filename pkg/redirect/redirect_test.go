@@ -86,9 +86,12 @@ func TestPrefixlessHosts(t *testing.T) {
 			}
 			defer resp.Body.Close()
 			gotErr := (resp.StatusCode != http.StatusOK)
+			all, _ := io.ReadAll(resp.Body)
 			if gotErr != c.wantErr {
-				all, _ := io.ReadAll(resp.Body)
 				t.Errorf("got error %v, want %v; %s", gotErr, c.wantErr, string(all))
+			}
+			if resp.ContentLength >= 0 && int(resp.ContentLength) != len(all) {
+				t.Errorf("got %d bytes, want %d", len(all), resp.ContentLength)
 			}
 
 			link := resp.Header.Get("Link")
@@ -108,6 +111,10 @@ func TestPrefixlessHosts(t *testing.T) {
 				}
 				if resp.StatusCode != http.StatusOK {
 					t.Errorf("listing next page; got status %v, want %v", resp.StatusCode, http.StatusOK)
+				}
+				all, _ := io.ReadAll(resp.Body)
+				if resp.ContentLength >= 0 && int(resp.ContentLength) != len(all) {
+					t.Errorf("got %d bytes, want %d", len(all), resp.ContentLength)
 				}
 			}
 		})
