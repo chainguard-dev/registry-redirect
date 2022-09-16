@@ -272,7 +272,6 @@ func (rdr redirect) proxy(w http.ResponseWriter, r *http.Request) {
 			w.Header().Add(k, vv)
 		}
 	}
-	w.WriteHeader(resp.StatusCode)
 
 	// If it's a list request, rewrite the response so the name key matches the
 	// user's requested repo, otherwise clients will repeatedly request the
@@ -287,11 +286,21 @@ func (rdr redirect) proxy(w http.ResponseWriter, r *http.Request) {
 		log.Println("=== BEFORE: Name:", lr.Name)
 		lr.Name = strings.Replace(lr.Name, rdr.repo+"/", "", 1)
 		log.Println("=== CHANGED: Name:", lr.Name)
+
+		// Unset the content-length header from our response, because we're
+		// about to rewrite the response to be shorter than the original.
+		// This can confuse Cloud Run, which responds with an empty body
+		// if the content-length header is wrong in some cases.
+		w.Header().Del("Content-Length")
+		w.WriteHeader(resp.StatusCode)
 		if err := json.NewEncoder(w).Encode(lr); err != nil {
 			logger.Errorf("Error encoding list response body: %v", err)
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 		}
+
 		return
+	} else {
+		w.WriteHeader(resp.StatusCode)
 	}
 
 	// Unless we're serving blobs, also proxy the response body, if any.
