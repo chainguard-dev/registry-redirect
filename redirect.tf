@@ -59,6 +59,8 @@ resource "google_cloud_run_service" "regions" {
         args = [
           "--prefix",
           "chainguard",
+          "--repo",
+          "chainguard-images",
         ]
       }
       service_account_name  = google_service_account.sa.email
