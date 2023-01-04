@@ -1,10 +1,11 @@
 module github.com/chainguard-dev/registry-redirect
 
-go 1.17
+go 1.19
 
 require (
 	github.com/google/go-containerregistry v0.11.0
 	github.com/gorilla/mux v1.8.0
+	github.com/hashicorp/go-retryablehttp v0.7.2
 	knative.dev/pkg v0.0.0-20220912140433-cc6e435120a7
 )
 
@@ -18,6 +19,7 @@ require (
 	github.com/go-logr/logr v1.2.2 // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/google/gofuzz v1.2.0 // indirect
+	github.com/hashicorp/go-cleanhttp v0.5.2 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
 	github.com/klauspost/compress v1.15.8 // indirect
 	github.com/mitchellh/go-homedir v1.1.0 // indirect

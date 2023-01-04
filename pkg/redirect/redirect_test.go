@@ -19,9 +19,9 @@ import (
 
 func TestRedirect(t *testing.T) {
 	for _, c := range []struct{ host, repo, prefix string }{
-		{"ghcr.io", "distroless", ""},
+		{"ghcr.io", "chainguard-images", ""},
 		{"gcr.io", "jason-chainguard-public", ""},
-		{"ghcr.io", "distroless", "unicorns"},
+		{"ghcr.io", "chainguard-images", "unicorns"},
 		{"gcr.io", "jason-chainguard-public", "unicorns"},
 	} {
 		t.Run(fmt.Sprintf("%s/%s (prefix %s)", c.host, c.repo, c.prefix), func(t *testing.T) {
