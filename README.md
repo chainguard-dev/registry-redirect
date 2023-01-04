@@ -4,7 +4,7 @@
 
 This is a simple OCI redirector service that allows for custom domains, including forwarding auth token requests to the original registry.
 
-For example, this is used to serve `distroless.dev/*` as a redirection to `ghcr.io/distroless/*`.
+For example, this is used to serve `cgr.dev/chainguard/*` as a redirection to `ghcr.io/chainguard-images/*`.
 
 It's intended to be deployed to Google Cloud Run, which is responsible for handling HTTPS.
 

@@ -21,23 +21,23 @@ import (
 // - take a config for registries/repos to redirect from/to.
 
 var (
-	// Redirect requests for distroless.dev/static -> ghcr.io/distroless/static
+	// Redirect requests for $DOMAIN/[prefix/]static -> ghcr.io/chainguard-images/static
 	// If repo is empty, example.dev/foo/bar -> ghcr.io/foo/bar
-	repo = flag.String("repo", "distroless", "repo to redirect to")
+	repo = flag.String("repo", "chainguard-images", "repo to redirect to")
 
 	// TODO(jason): Support arbitrary registries.
 	gcr = flag.Bool("gcr", false, "if true, use GCR mode")
 
 	// prefix is the user-visible repo prefix.
-	// For example, if repo is "distroless" and prefix is "unicorns",
+	// For example, if repo is "chainguard-images" and prefix is "unicorns",
 	// users hitting example.dev/unicorns/foo/bar will be redirected to
-	// ghcr.io/distroless/foo/bar.
+	// ghcr.io/chainguard-images/foo/bar.
 	// If prefix is unset, hitting example.dev/unicorns/foo/bar will
 	// redirect to ghcr.io/unicorns/foo/bar.
 	// If prefix is set, and users hit a path without the prefix, it's ignored:
-	// - example.dev/foo/bar -> ghcr.io/distroless/foo/bar
+	// - example.dev/foo/bar -> ghcr.io/chainguard-images/foo/bar
 	// (this is for backward compatibility with prefix-less redirects)
-	prefix = flag.String("prefix", "", "if set, user-visible repo prefix")
+	prefix = flag.String("prefix", "chainguard", "if set, user-visible repo prefix")
 )
 
 func main() {

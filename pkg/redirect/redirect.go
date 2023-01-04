@@ -14,6 +14,7 @@ import (
 	"strings"
 
 	"github.com/gorilla/mux"
+	"github.com/hashicorp/go-retryablehttp"
 	"knative.dev/pkg/logging"
 )
 
@@ -32,13 +33,14 @@ func redact(in http.Header) http.Header {
 
 func New(host, repo, prefix string) http.Handler {
 	rdr := redirect{
-		host:   host,
-		repo:   repo,
-		prefix: prefix,
+		host:      host,
+		repo:      repo,
+		prefix:    prefix,
+		retryhttp: retryablehttp.NewClient(),
 	}
 	router := mux.NewRouter()
 
-	router.Handle("/", http.RedirectHandler("https://github.com/distroless", http.StatusTemporaryRedirect))
+	router.Handle("/", http.RedirectHandler("https://github.com/chainguard-images", http.StatusTemporaryRedirect))
 
 	router.HandleFunc("/v2", rdr.v2)
 	router.HandleFunc("/v2/", rdr.v2)
@@ -62,9 +64,10 @@ func New(host, repo, prefix string) http.Handler {
 }
 
 type redirect struct {
-	host   string
-	repo   string
-	prefix string
+	host      string
+	repo      string
+	prefix    string
+	retryhttp *retryablehttp.Client
 }
 
 func (rdr redirect) v2(resp http.ResponseWriter, req *http.Request) {
@@ -85,7 +88,7 @@ func (rdr redirect) v2(resp http.ResponseWriter, req *http.Request) {
 		"header", redact(req.Header))
 	resp.Header().Set("X-Redirected", req.URL.String())
 
-	back, err := http.DefaultClient.Do(out)
+	back, err := rdr.retryhttp.Do(&retryablehttp.Request{Request: out})
 	if err != nil {
 		logger.Errorf("Error sending request: %v", err)
 		http.Error(resp, err.Error(), http.StatusInternalServerError)
@@ -152,7 +155,7 @@ func (rdr redirect) token(w http.ResponseWriter, r *http.Request) {
 		"header", redact(req.Header))
 	w.Header().Set("X-Redirected", req.URL.String())
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := rdr.retryhttp.Do(&retryablehttp.Request{Request: req})
 	if err != nil {
 		logger.Errorf("Error sending request: %v", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -237,7 +240,7 @@ func (rdr redirect) proxy(w http.ResponseWriter, r *http.Request) {
 		"header", redact(req.Header))
 	w.Header().Set("X-Redirected", req.URL.String())
 
-	resp, err := http.DefaultTransport.RoundTrip(req) // Transport doesn't follow redirects.
+	resp, err := rdr.retryhttp.StandardClient().Transport.RoundTrip(req) // Transport doesn't follow redirects.
 	if err != nil {
 		logger.Errorf("Error sending request: %v", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -334,7 +337,7 @@ func (rdr redirect) getToken(r *http.Request) (string, *http.Response, error) {
 	}
 	req, _ := http.NewRequest(http.MethodGet, url, nil)
 	req.Header = r.Header.Clone()
-	resp, err := http.DefaultClient.Do(req) //nolint:gosec
+	resp, err := rdr.retryhttp.Do(&retryablehttp.Request{Request: req}) //nolint:gosec
 	if err != nil {
 		return "", nil, err
 	}
