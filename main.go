@@ -11,8 +11,11 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"os/signal"
+	"time"
 
 	"github.com/chainguard-dev/registry-redirect/pkg/redirect"
+	"go.uber.org/zap"
 	"knative.dev/pkg/logging"
 )
 
@@ -21,17 +24,17 @@ import (
 // - take a config for registries/repos to redirect from/to.
 
 var (
-	// Redirect requests for distroless.dev/static -> ghcr.io/distroless/static
+	// Redirect requests for example.dev/static -> ghcr.io/static
 	// If repo is empty, example.dev/foo/bar -> ghcr.io/foo/bar
-	repo = flag.String("repo", "distroless", "repo to redirect to")
+	repo = flag.String("repo", "", "repo to redirect to")
 
 	// TODO(jason): Support arbitrary registries.
 	gcr = flag.Bool("gcr", false, "if true, use GCR mode")
 
 	// prefix is the user-visible repo prefix.
-	// For example, if repo is "distroless" and prefix is "unicorns",
+	// For example, if repo is "example" and prefix is "unicorns",
 	// users hitting example.dev/unicorns/foo/bar will be redirected to
-	// ghcr.io/distroless/foo/bar.
+	// ghcr.io/example/foo/bar.
 	// If prefix is unset, hitting example.dev/unicorns/foo/bar will
 	// redirect to ghcr.io/unicorns/foo/bar.
 	// If prefix is set, and users hit a path without the prefix, it's ignored:
@@ -41,9 +44,26 @@ var (
 )
 
 func main() {
-	flag.Parse()
-	logger := logging.FromContext(context.Background())
+	c := make(chan os.Signal, 1)
+	signal.Notify(c, os.Interrupt)
 
+	ctx, cancel := context.WithCancel(context.Background())
+
+	logger := logging.FromContext(ctx)
+
+	go func() {
+		oscall := <-c
+		logger.Infof("system call:%+v", oscall)
+		cancel()
+	}()
+
+	if err := serve(ctx, logger); err != nil {
+		logger.Fatalf("failed to serve:+%v\n", err)
+	}
+}
+
+func serve(ctx context.Context, logger *zap.SugaredLogger) (err error) {
+	flag.Parse()
 	host := "ghcr.io"
 	if *gcr {
 		host = "gcr.io"
@@ -55,6 +75,34 @@ func main() {
 	if port == "" {
 		port = "8080"
 	}
-	logger.Infof("Listening on port %s", port)
-	logger.Fatal(http.ListenAndServe(fmt.Sprintf(":%s", port), nil))
+	logger.Info("http server starting...")
+	srv := &http.Server{
+		Addr:    fmt.Sprintf(":%s", port),
+		Handler: nil,
+	}
+	go func() {
+		if err = srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			logger.Fatalf("listen:%+s\n", err)
+		}
+	}()
+	logger.Infof("http server listening on port: %s", port)
+	<-ctx.Done()
+	logger.Info("http server stopped")
+
+	ctxShutDown, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer func() {
+		cancel()
+	}()
+
+	if err = srv.Shutdown(ctxShutDown); err != nil {
+		logger.Fatalf("http server shutdown failed:%+s", err)
+	}
+
+	logger.Infof("http server shutdown gracefully")
+
+	if err == http.ErrServerClosed {
+		err = nil
+	}
+
+	return
 }

@@ -19,32 +19,30 @@ import (
 
 func TestRedirect(t *testing.T) {
 	for _, c := range []struct{ host, repo, prefix string }{
-		{"ghcr.io", "distroless", ""},
-		{"gcr.io", "jason-chainguard-public", ""},
-		{"ghcr.io", "distroless", "unicorns"},
-		{"gcr.io", "jason-chainguard-public", "unicorns"},
+		{"ghcr.io", "dagger", ""},
 	} {
 		t.Run(fmt.Sprintf("%s/%s (prefix %s)", c.host, c.repo, c.prefix), func(t *testing.T) {
 			s := httptest.NewServer(redirect.New(c.host, c.repo, c.prefix))
 			defer s.Close()
 
 			reg := strings.TrimPrefix(s.URL, "http://")
-			ref := fmt.Sprintf("%s/static", reg)
+			ref := fmt.Sprintf("%s/engine", reg)
+			refWithTag := fmt.Sprintf("%s:main", ref)
 			if c.prefix != "" {
-				ref = fmt.Sprintf("%s/%s/static", reg, c.prefix)
+				ref = fmt.Sprintf("%s/%s/engine", reg, c.prefix)
 			}
 
 			t.Logf("testing image: %s", ref)
 
-			if _, err := crane.Digest(ref); err != nil {
+			if _, err := crane.Digest(refWithTag); err != nil {
 				t.Errorf("digest: %v", err)
 			}
 
-			if _, err := crane.Manifest(ref); err != nil {
+			if _, err := crane.Manifest(refWithTag); err != nil {
 				t.Errorf("manifest: %v", err)
 			}
 
-			if _, err := crane.Pull(ref); err != nil {
+			if _, err := crane.Pull(refWithTag); err != nil {
 				t.Errorf("pulling: %v", err)
 			}
 
@@ -63,19 +61,16 @@ func TestPrefixlessHosts(t *testing.T) {
 	for _, c := range []struct {
 		desc    string
 		reqHost string
-		repo    string
+		image   string
 		wantErr bool
 	}{
-		{"cgr with prefix", "cgr.dev", "chainguard/static", false},
-		{"cgr without prefix", "cgr.dev", "static", true},
-		{"distroless with prefix", "distroless.dev", "chainguard/static", true},
-		{"distroless without prefix", "distroless.dev", "static", false},
+		{"registry.dagger.io with prefix", "registry.dagger.io", "engine", false},
 	} {
 		t.Run(c.desc, func(t *testing.T) {
-			s := httptest.NewServer(redirect.New("ghcr.io", "distroless", "chainguard"))
+			s := httptest.NewServer(redirect.New("ghcr.io", "dagger", ""))
 			defer s.Close()
 
-			req, err := http.NewRequest(http.MethodGet, fmt.Sprintf("%s/v2/%s/tags/list", s.URL, c.repo), nil)
+			req, err := http.NewRequest(http.MethodGet, fmt.Sprintf("%s/v2/%s/tags/list", s.URL, c.image), nil)
 			if err != nil {
 				t.Fatalf("creating request: %v", err)
 			}

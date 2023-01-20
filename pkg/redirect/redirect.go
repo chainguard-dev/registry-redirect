@@ -18,8 +18,7 @@ import (
 )
 
 var prefixlessHosts = map[string]bool{
-	"distroless.dev":   true,
-	"images.wolfi.dev": true,
+	"registry.dagger.io": true,
 }
 
 func redact(in http.Header) http.Header {
@@ -38,7 +37,7 @@ func New(host, repo, prefix string) http.Handler {
 	}
 	router := mux.NewRouter()
 
-	router.Handle("/", http.RedirectHandler("https://github.com/distroless", http.StatusTemporaryRedirect))
+	router.Handle("/", http.RedirectHandler("https://github.com/dagger/dagger", http.StatusTemporaryRedirect))
 
 	router.HandleFunc("/v2", rdr.v2)
 	router.HandleFunc("/v2/", rdr.v2)
