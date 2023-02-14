@@ -27,9 +27,9 @@ resource "google_compute_url_map" "new_global" {
   path_matcher {
     name = "matcher"
 
-    # Match /v2/ and /token and send to the backend service.
+    # Match /v2/* and /token and /chainguard/* and send to the backend service.
     path_rule {
-      paths   = ["/v2", "/v2/*", "/token"]
+      paths   = ["/v2", "/v2/*", "/token", "/chainguard/*"]
       service = google_compute_backend_service.new_global.id
     }
 
@@ -49,6 +49,12 @@ resource "google_compute_url_map" "new_global" {
     service = google_compute_backend_service.new_global.id
     host    = "cgr.dev"
     path    = "/v2/chainguard/static/manifests/latest"
+  }
+
+  test {
+    service = google_compute_backend_service.new_global.id
+    host    = "cgr.dev"
+    path    = "/chainguard/static:latest"
   }
 
   test {
