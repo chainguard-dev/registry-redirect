@@ -59,6 +59,34 @@ func TestRedirect(t *testing.T) {
 	}
 }
 
+func TestGHPageRedirect(t *testing.T) {
+	s := httptest.NewServer(redirect.New("ghcr.io", "chainguard-images", "chainguard"))
+
+	for _, path := range []string{
+		"/chainguard/busybox",
+		"/chainguard/busybox:latest",
+		"/chainguard/busybox@sha256:abcdef",
+	} {
+		t.Run(path, func(t *testing.T) {
+			req, err := http.NewRequest(http.MethodGet, s.URL+path, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			resp, err := http.DefaultTransport.RoundTrip(req)
+			if err != nil {
+				t.Fatal(err)
+			}
+			got, err := resp.Location()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got, want := got.String(), "https://github.com/chainguard-images/images/blob/main/images/busybox"; got != want {
+				t.Fatalf("Got %q, want %q", got, want)
+			}
+		})
+	}
+}
+
 func TestPrefixlessHosts(t *testing.T) {
 	for _, c := range []struct {
 		desc    string

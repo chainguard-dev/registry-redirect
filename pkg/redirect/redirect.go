@@ -38,7 +38,7 @@ func New(host, repo, prefix string) http.Handler {
 	}
 	router := mux.NewRouter()
 
-	router.Handle("/", http.RedirectHandler("https://github.com/distroless", http.StatusTemporaryRedirect))
+	router.Handle("/", http.RedirectHandler("https://github.com/chainguard-images", http.StatusTemporaryRedirect))
 
 	router.HandleFunc("/v2", rdr.v2)
 	router.HandleFunc("/v2/", rdr.v2)
@@ -48,6 +48,9 @@ func New(host, repo, prefix string) http.Handler {
 	router.HandleFunc("/v2/{repo:.*}/manifests/{tagOrDigest:.*}", rdr.proxy)
 	router.HandleFunc("/v2/{repo:.*}/blobs/{digest:.*}", rdr.proxy)
 	router.HandleFunc("/v2/{repo:.*}/tags/list", rdr.proxy)
+
+	// Redirect image URLs like cgr.dev/chainguard/static:latest to the equivalent README on GitHub.
+	router.HandleFunc("/"+prefix+"/{repoAndTag:.*}", rdr.ghpage)
 
 	router.NotFoundHandler = http.HandlerFunc(func(resp http.ResponseWriter, req *http.Request) {
 		ctx := req.Context()
@@ -354,4 +357,21 @@ func (rdr redirect) getToken(r *http.Request) (string, *http.Response, error) {
 type listResponse struct {
 	Name string   `json:"name"`
 	Tags []string `json:"tags"`
+}
+
+func (rdr redirect) ghpage(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	logger := logging.FromContext(ctx)
+
+	repoAndTag := mux.Vars(r)["repoAndTag"]
+	repo := repoAndTag
+	if strings.Contains(repoAndTag, ":") {
+		repo = repoAndTag[:strings.Index(repoAndTag, ":")]
+	}
+	if strings.Contains(repoAndTag, "@") {
+		repo = repoAndTag[:strings.Index(repoAndTag, "@")]
+	}
+	url := fmt.Sprintf("https://github.com/chainguard-images/images/blob/main/images/%s", repo)
+	logger.Infof("Redirecting %q to %q", r.URL, url)
+	http.Redirect(w, r, url, http.StatusTemporaryRedirect)
 }
