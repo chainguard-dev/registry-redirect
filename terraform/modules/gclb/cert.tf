@@ -1,11 +1,4 @@
-variable "new_domains" {
-  type = list(string)
-  default = [
-    "cgr.dev",
-    "distroless.dev",
-    "images.wolfi.dev",
-  ]
-}
+
 
 // Enable Certificate Manager API.
 resource "google_project_service" "certmanager" {
@@ -13,14 +6,14 @@ resource "google_project_service" "certmanager" {
 }
 
 resource "google_certificate_manager_dns_authorization" "this" {
-  for_each = toset(var.new_domains)
+  for_each = toset(var.domains)
   name     = replace("${each.key}", ".", "-")
   domain   = each.key
   labels   = {}
 }
 
 resource "google_certificate_manager_certificate" "cert" {
-  for_each = toset(var.new_domains)
+  for_each = toset(var.domains)
 
   name  = replace("${each.key}", ".", "-")
   scope = "DEFAULT"
@@ -40,7 +33,7 @@ resource "google_certificate_manager_certificate_map" "map" {
 }
 
 resource "google_certificate_manager_certificate_map_entry" "map_entry" {
-  for_each = toset(var.new_domains)
+  for_each = toset(var.domains)
 
   name     = replace("certificatemapentry-${each.key}", ".", "-")
   map      = google_certificate_manager_certificate_map.map.name

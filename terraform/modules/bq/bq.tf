@@ -1,3 +1,7 @@
+provider "google" {
+  project = var.project
+}
+
 resource "google_logging_project_sink" "bq_sink" {
   name        = "bq-sink"
   description = "collecting requests"
