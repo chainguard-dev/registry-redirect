@@ -4,18 +4,18 @@ provider "google" {
 
 // Reserve a global static IP address.
 resource "google_compute_global_address" "global" {
-  name = "address"
+  name = "new-address"
 }
 
 resource "google_compute_global_forwarding_rule" "global" {
-  name       = "global"
+  name       = "new-global"
   target     = google_compute_target_https_proxy.global.id
   port_range = "443"
   ip_address = google_compute_global_address.global.address
 }
 
 resource "google_compute_url_map" "global" {
-  name            = "global"
+  name            = "new-global"
   description     = "direct traffic to the backend service"
   default_service = google_compute_backend_service.global.id
 
@@ -65,7 +65,7 @@ resource "google_compute_url_map" "global" {
 }
 
 resource "google_compute_target_https_proxy" "global" {
-  name    = "global"
+  name    = "new-global"
   url_map = google_compute_url_map.global.id
 
   certificate_map = "//certificatemanager.googleapis.com/${google_certificate_manager_certificate_map.map.id}"
@@ -73,7 +73,7 @@ resource "google_compute_target_https_proxy" "global" {
 
 // Create a global backend service with a backend for each regional NEG.
 resource "google_compute_backend_service" "global" {
-  name       = "global"
+  name       = "new-global"
   enable_cdn = true
 
   # Inject some request headers based on detected client information.
