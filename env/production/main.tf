@@ -21,8 +21,9 @@ module "bq" {
 module "gclb" {
   source = "../../terraform/modules/gclb"
 
-  project = var.project
-  regions = var.regions
+  project       = var.project
+  regions       = var.regions
+  service-names = module.redirect.service-names
   domains = [
     "cgr.dev",
     "distroless.dev",
