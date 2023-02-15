@@ -108,7 +108,7 @@ resource "google_compute_region_network_endpoint_group" "neg" {
   network_endpoint_type = "SERVERLESS"
   region                = each.key
   cloud_run {
-    service = var.service-names[each.key]
+    service = each.key
   }
 
   depends_on = [google_project_service.compute]

@@ -15,5 +15,5 @@ variable "domains" {
   type = set(string)
 }
 
-variable "service-names" {
+variable "primary_domain" {
 }

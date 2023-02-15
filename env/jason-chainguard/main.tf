@@ -23,8 +23,8 @@ module "gclb" {
 
   project       = var.project
   regions       = var.regions
-  service-names = module.redirect.service-names
   domains = [
     "redirect.imjasonh.dev",
   ]
+  primary_domain = "redirect.imjasonh.dev"
 }

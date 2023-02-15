@@ -28,4 +28,5 @@ module "gclb" {
     "cgr.dev",
     "distroless.dev",
   ]
+  primary_domain = "cgr.dev"
 }

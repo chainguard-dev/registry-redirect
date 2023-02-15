@@ -37,7 +37,9 @@ resource "google_certificate_manager_certificate_map_entry" "map_entry" {
 
   name     = replace("certificatemapentry-${each.key}", ".", "-")
   map      = google_certificate_manager_certificate_map.map.name
-  hostname = each.key
+
+  hostname = each.key == var.primary_domain ? null : each.key
+  matcher = each.key == var.primary_domain ? "PRIMARY" : null
 
   certificates = [
     google_certificate_manager_certificate.cert[each.key].id
