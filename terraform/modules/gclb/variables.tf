@@ -12,7 +12,7 @@ variable "regions" {
 }
 
 variable "domains" {
-  type = list(string)
+  type = set(string)
 }
 
 variable "service-names" {
