@@ -2,6 +2,7 @@
 
 // Enable Certificate Manager API.
 resource "google_project_service" "certmanager" {
+  disable_on_destroy = false
   service = "certificatemanager.googleapis.com"
 }
 
@@ -35,11 +36,20 @@ resource "google_certificate_manager_certificate_map_entry" "map_entry" {
   name     = replace("certificatemapentry-${each.key}", ".", "-")
   map      = google_certificate_manager_certificate_map.map.name
 
-  hostname = each.key == var.primary_domain ? null : each.key
-  matcher = each.key == var.primary_domain ? "PRIMARY" : null
+  hostname = each.key
 
   certificates = [
     google_certificate_manager_certificate.cert[each.key].id
+  ]
+}
+
+resource "google_certificate_manager_certificate_map_entry" "primary_map_entry" {
+  name     = replace("certificatemapentry-${var.primary_domain}-2", ".", "-")
+  map      = google_certificate_manager_certificate_map.map.name
+  matcher = "PRIMARY"
+
+  certificates = [
+    google_certificate_manager_certificate.cert[var.primary_domain].id
   ]
 }
 

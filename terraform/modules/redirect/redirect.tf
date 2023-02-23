@@ -1,6 +1,7 @@
 // Enable Cloud Run API.
 resource "google_project_service" "run" {
-  service = "run.googleapis.com"
+  disable_on_destroy = false
+  service            = "run.googleapis.com"
 }
 
 // The service runs as a minimal service account with no permissions in the project.

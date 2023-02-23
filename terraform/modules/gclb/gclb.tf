@@ -116,5 +116,6 @@ resource "google_compute_region_network_endpoint_group" "neg" {
 
 // Enable Compute Engine API.
 resource "google_project_service" "compute" {
+  disable_on_destroy = false
   service = "compute.googleapis.com"
 }
