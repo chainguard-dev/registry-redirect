@@ -20,9 +20,6 @@ resource "google_certificate_manager_certificate" "cert" {
 
   managed {
     domains = [each.key]
-    dns_authorizations = [
-      google_certificate_manager_dns_authorization.this[each.key].id
-    ]
   }
 
   depends_on = [google_project_service.certmanager]
