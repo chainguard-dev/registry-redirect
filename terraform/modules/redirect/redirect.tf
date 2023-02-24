@@ -1,35 +1,7 @@
-terraform {
-  required_providers {
-    ko = {
-      source = "ko-build/ko"
-    }
-    google = {
-      source  = "hashicorp/google"
-      version = "~> 4.36.0"
-    }
-  }
-}
-
-provider "ko" {
-  repo = "gcr.io/${var.project}"
-}
-
-variable "project" {
-  type = string
-}
-
-provider "google" {
-  project = var.project
-}
-
 // Enable Cloud Run API.
 resource "google_project_service" "run" {
-  service = "run.googleapis.com"
-}
-
-// Enable Compute Engine API.
-resource "google_project_service" "compute" {
-  service = "compute.googleapis.com"
+  disable_on_destroy = false
+  service            = "run.googleapis.com"
 }
 
 // The service runs as a minimal service account with no permissions in the project.
@@ -78,17 +50,10 @@ resource "google_cloud_run_service" "regions" {
   depends_on = [google_project_service.run]
 }
 
-// Output each service URL.
-output "urls" {
-  value = {
-    for reg in google_cloud_run_service.regions :
-    reg.name => reg.status[0].url
-  }
-}
 
 // Make each service invokable by all users.
 resource "google_cloud_run_service_iam_member" "allUsers" {
-  for_each = google_cloud_run_service.regions
+  for_each = var.regions
 
   service  = google_cloud_run_service.regions[each.key].name
   location = each.key
