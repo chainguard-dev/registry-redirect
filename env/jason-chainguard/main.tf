@@ -21,10 +21,7 @@ module "bq" {
 module "gclb" {
   source = "../../terraform/modules/gclb"
 
-  project       = var.project
-  regions       = var.regions
-  domains = [
-    "redirect.imjasonh.dev",
-  ]
-  primary_domain = "redirect.imjasonh.dev"
+  project = var.project
+  regions = var.regions
+  domain  = "redirect.imjasonh.dev"
 }

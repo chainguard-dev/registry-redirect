@@ -17,11 +17,6 @@ import (
 	"knative.dev/pkg/logging"
 )
 
-var prefixlessHosts = map[string]bool{
-	"distroless.dev":   true,
-	"images.wolfi.dev": true,
-}
-
 func redact(in http.Header) http.Header {
 	h := in.Clone()
 	if h.Get("Authorization") != "" {
@@ -30,27 +25,20 @@ func redact(in http.Header) http.Header {
 	return h
 }
 
-func New(host, repo, prefix string) http.Handler {
-	rdr := redirect{
-		host:   host,
-		repo:   repo,
-		prefix: prefix,
-	}
+func New() http.Handler {
 	router := mux.NewRouter()
 
-	router.Handle("/", http.RedirectHandler("https://github.com/chainguard-images", http.StatusTemporaryRedirect))
+	router.HandleFunc("/v2", v2)
+	router.HandleFunc("/v2/", v2)
 
-	router.HandleFunc("/v2", rdr.v2)
-	router.HandleFunc("/v2/", rdr.v2)
+	router.HandleFunc("/token", token)
+	router.HandleFunc("/v2/{repo}/{rest:.*}", proxy)
 
-	router.HandleFunc("/token", rdr.token)
-
-	router.HandleFunc("/v2/{repo:.*}/manifests/{tagOrDigest:.*}", rdr.proxy)
-	router.HandleFunc("/v2/{repo:.*}/blobs/{digest:.*}", rdr.proxy)
-	router.HandleFunc("/v2/{repo:.*}/tags/list", rdr.proxy)
-
-	// Redirect image URLs like cgr.dev/chainguard/static:latest to the equivalent README on GitHub.
-	router.HandleFunc("/"+prefix+"/{repoAndTag:.*}", rdr.ghpage)
+	// Redirect any other path to cgr.dev directly.
+	// Among other things this will redirect URLs like https://distroless.dev/static:latest
+	// to https://cgr.dev/chainguard/static:latest, which will redirect to a useful place.
+	// Besides that, any other URL will probably end up serving a 404 from cgr.dev.
+	router.HandleFunc("/{rest:.*}", ghpage)
 
 	router.NotFoundHandler = http.HandlerFunc(func(resp http.ResponseWriter, req *http.Request) {
 		ctx := req.Context()
@@ -64,23 +52,11 @@ func New(host, repo, prefix string) http.Handler {
 	return router
 }
 
-type redirect struct {
-	host   string
-	repo   string
-	prefix string
-}
-
-func (rdr redirect) v2(resp http.ResponseWriter, req *http.Request) {
+func v2(resp http.ResponseWriter, req *http.Request) {
 	ctx := req.Context()
 	logger := logging.FromContext(ctx)
 
-	var url string
-	if rdr.host == "gcr.io" {
-		url = "https://gcr.io/v2/"
-	} else {
-		url = "https://ghcr.io/v2/"
-	}
-	out, _ := http.NewRequest(req.Method, url, nil)
+	out, _ := http.NewRequest(req.Method, "https://cgr.dev/v2/", nil)
 
 	logger.Infow("sending request",
 		"method", req.Method,
@@ -106,12 +82,7 @@ func (rdr redirect) v2(resp http.ResponseWriter, req *http.Request) {
 		for _, vv := range v {
 			if k == "Www-Authenticate" {
 				log.Println("=== BEFORE: Www-Authenticate:", vv)
-				if rdr.host == "gcr.io" {
-					// GCR's token endpoint is /v2/token, we want callers to hit us at /token.
-					vv = strings.Replace(vv, `realm="https://gcr.io/v2/`, fmt.Sprintf(`realm="https://%s/`, req.Host), 1)
-				} else {
-					vv = strings.Replace(vv, `realm="https://ghcr.io/`, fmt.Sprintf(`realm="https://%s/`, req.Host), 1)
-				}
+				vv = strings.Replace(vv, `://cgr.dev/`, fmt.Sprintf(`://%s/`, req.Host), 1)
 				log.Println("=== CHANGED: Www-Authenticate:", vv)
 			}
 			resp.Header().Add(k, vv)
@@ -123,29 +94,17 @@ func (rdr redirect) v2(resp http.ResponseWriter, req *http.Request) {
 	}
 }
 
-func (rdr redirect) token(w http.ResponseWriter, r *http.Request) {
+func token(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	logger := logging.FromContext(ctx)
 
 	vals := r.URL.Query()
-	if rdr.prefix != "" {
-		scope := vals.Get("scope")
-		scope = strings.Replace(scope, rdr.prefix+"/", "", 1)
-		vals.Set("scope", scope)
-	}
-	if rdr.repo != "" {
-		scope := vals.Get("scope")
-		scope = strings.Replace(scope, "repository:", "repository:"+rdr.repo+"/", 1)
-		vals.Set("scope", scope)
-	}
 
-	var url string
-	if rdr.host == "gcr.io" {
-		url = "https://gcr.io/v2/token?" + vals.Encode()
-	} else {
-		url = "https://ghcr.io/token?" + vals.Encode()
-	}
+	scope := vals.Get("scope")
+	scope = strings.Replace(scope, "repository:", "repository:chainguard/", 1)
+	vals.Set("scope", scope)
 
+	url := "https://cgr.dev/token?" + vals.Encode()
 	req, _ := http.NewRequest(r.Method, url, nil)
 	req.Header = r.Header.Clone()
 
@@ -180,59 +139,19 @@ func (rdr redirect) token(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (rdr redirect) proxy(w http.ResponseWriter, r *http.Request) {
+func proxy(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	logger := logging.FromContext(ctx)
 
-	var url string
-	if rdr.host == "gcr.io" {
-		url = "https://gcr.io/v2/"
-	} else {
-		url = "https://ghcr.io/v2/"
-	}
-	if rdr.repo != "" {
-		url += rdr.repo + "/"
-	}
+	repo := mux.Vars(r)["repo"]
+	rest := mux.Vars(r)["rest"]
 
-	path := strings.TrimPrefix(r.URL.Path, "/v2/")
-	if rdr.prefix != "" && !prefixlessHosts[r.Host] {
-		log.Println("=== BEFORE: path:", path)
-		// Require and trim the prefix, if the request isn't coming from a prefixless host.
-		if !strings.HasPrefix(path, rdr.prefix+"/") {
-			w.WriteHeader(http.StatusNotFound)
-			fmt.Fprintln(w, `{"errors":[{"code":"MANIFEST_UNKNOWN","message":"Manifest unknown, prefix required"}]}`)
-			return
-		}
-		path = strings.TrimPrefix(path, rdr.prefix+"/")
-		log.Println("=== AFTER: path:", path)
-	}
-
-	url += path
+	url := fmt.Sprintf("https://cgr.dev/v2/chainguard/%s/%s", repo, rest)
 	if query := r.URL.Query().Encode(); query != "" {
 		url += "?" + query
 	}
 	req, _ := http.NewRequest(r.Method, url, nil)
 	req.Header = r.Header.Clone()
-
-	// If the request is coming in without auth, get some auth.
-	// This is useful for testing, but should never happen in real life.
-	// Actually, containerd seems to make unauthenticated HEAD requests before
-	// hitting /v2/, so this might be load-bearing.
-	if req.Header.Get("Authorization") == "" {
-		logger.Warnw("request without Authorization header, getting auth")
-		t, resp, err := rdr.getToken(r)
-		if err != nil {
-			if resp != nil {
-				logger.Infof("Error response getting token: %d %s", resp.StatusCode, resp.Status)
-				http.Error(w, resp.Status, resp.StatusCode)
-				return
-			}
-			logger.Errorf("Error getting token: %v", err)
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-		req.Header.Set("Authorization", "Bearer "+t)
-	}
 
 	logger.Infow("sending request",
 		"method", req.Method,
@@ -262,13 +181,10 @@ func (rdr redirect) proxy(w http.ResponseWriter, r *http.Request) {
 			// In order for the client to be able to use this link, we need to rewrite it to
 			// point to the user's requested repo, not the upstream:
 			//   Link: </v2[/prefix]/static/repo/tags/list?n=100&last=blah>; rel="next">
-			if k == "Link" && strings.HasPrefix(vv, "</v2/"+rdr.repo) {
+			if k == "Link" && strings.HasPrefix(vv, "</v2/chainguard") {
 				log.Println("=== BEFORE: Link:", vv)
-				rest := strings.TrimPrefix(vv, "</v2/"+rdr.repo)
+				rest := strings.TrimPrefix(vv, "</v2/chainguard")
 				vv = "</v2" + rest
-				if rdr.prefix != "" && !prefixlessHosts[r.Host] {
-					vv = "</v2/" + rdr.prefix + rest
-				}
 				log.Println("=== CHANGED: Link:", vv)
 			}
 
@@ -279,7 +195,7 @@ func (rdr redirect) proxy(w http.ResponseWriter, r *http.Request) {
 	// If it's a list request, rewrite the response so the name key matches the
 	// user's requested repo, otherwise clients will repeatedly request the
 	// first page looking for their repo's tags.
-	if rdr.repo != "" && strings.Contains(r.URL.Path, "/tags/list") {
+	if strings.Contains(r.URL.Path, "/tags/list") {
 		var lr listResponse
 		if err := json.NewDecoder(resp.Body).Decode(&lr); err != nil {
 			logger.Errorf("Error decoding list response body: %v", err)
@@ -287,7 +203,7 @@ func (rdr redirect) proxy(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		log.Println("=== BEFORE: Name:", lr.Name)
-		lr.Name = strings.Replace(lr.Name, rdr.repo+"/", "", 1)
+		lr.Name = strings.Replace(lr.Name, "chainguard/", "", 1)
 		log.Println("=== CHANGED: Name:", lr.Name)
 
 		// Unset the content-length header from our response, because we're
@@ -307,51 +223,16 @@ func (rdr redirect) proxy(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Unless we're serving blobs, also proxy the response body, if any.
-	// Most of the time blob responses will just be 302 redirects to
-	// another location, likely a CDN, but just in case we get a "real"
-	// response we'd like to avoid paying the egress cost to serve it.
-	// Manifests may also be served with redirects, but if they're not,
-	// they're likely small enough we don't mind paying to proxy them.
-	parts := strings.Split(r.URL.Path, "/")
-	if parts[len(parts)-2] != "blobs" {
+	// cgr.dev's blob responses should just be a 302 redirect to R2, but
+	// just in case we get a "real" response we'd like to avoid paying
+	// the egress cost to serve it.
+	// Manifests will be served directly and we don't mind paying to proxy
+	// them because they're small.
+	if !strings.Contains(r.URL.Path, "/blobs/") {
 		if _, err := io.Copy(w, resp.Body); err != nil {
 			logger.Errorf("Error copying response body: %v", err)
 		}
 	}
-}
-
-func (rdr redirect) getToken(r *http.Request) (string, *http.Response, error) {
-	parts := strings.Split(r.URL.Path, "/")
-	parts = parts[2 : len(parts)-2]
-	if rdr.prefix != "" && parts[0] == rdr.prefix {
-		parts = parts[1:]
-	}
-	if rdr.repo != "" {
-		parts = append([]string{rdr.repo}, parts...)
-	}
-	var url string
-	if rdr.host == "gcr.io" {
-		url = fmt.Sprintf("https://gcr.io/v2/token?scope=repository:%s:pull&service=gcr.io", strings.Join(parts, "/"))
-	} else {
-		url = fmt.Sprintf("https://ghcr.io/token?scope=repository:%s:pull&service=ghcr.io", strings.Join(parts, "/"))
-	}
-	req, _ := http.NewRequest(http.MethodGet, url, nil)
-	req.Header = r.Header.Clone()
-	resp, err := http.DefaultClient.Do(req) //nolint:gosec
-	if err != nil {
-		return "", nil, err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return "", resp, fmt.Errorf("Error getting token: %v", resp.Status)
-	}
-	var t struct {
-		Token string `json:"token"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&t); err != nil {
-		return "", nil, err
-	}
-	return t.Token, nil, nil
 }
 
 type listResponse struct {
@@ -359,19 +240,10 @@ type listResponse struct {
 	Tags []string `json:"tags"`
 }
 
-func (rdr redirect) ghpage(w http.ResponseWriter, r *http.Request) {
+func ghpage(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	logger := logging.FromContext(ctx)
-
-	repoAndTag := mux.Vars(r)["repoAndTag"]
-	repo := repoAndTag
-	if strings.Contains(repoAndTag, ":") {
-		repo = repoAndTag[:strings.Index(repoAndTag, ":")]
-	}
-	if strings.Contains(repoAndTag, "@") {
-		repo = repoAndTag[:strings.Index(repoAndTag, "@")]
-	}
-	url := fmt.Sprintf("https://github.com/chainguard-images/images/blob/main/images/%s", repo)
+	url := fmt.Sprintf("https://cgr.dev/chainguard%s", r.URL.Path)
 	logger.Infof("Redirecting %q to %q", r.URL, url)
 	http.Redirect(w, r, url, http.StatusTemporaryRedirect)
 }

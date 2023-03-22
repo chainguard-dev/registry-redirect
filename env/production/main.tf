@@ -21,11 +21,7 @@ module "bq" {
 module "gclb" {
   source = "../../terraform/modules/gclb"
 
-  project       = var.project
-  regions       = var.regions
-  domains = [
-    "cgr.dev",
-    "distroless.dev",
-  ]
-  primary_domain = "cgr.dev"
+  project = var.project
+  regions = var.regions
+  domain  = "distroless.dev"
 }

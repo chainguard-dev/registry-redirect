@@ -20,7 +20,7 @@ resource "google_compute_url_map" "global" {
   default_service = google_compute_backend_service.global.id
 
   host_rule {
-    hosts        = var.domains
+    hosts        = [var.domain]
     path_matcher = "matcher"
   }
 
@@ -43,24 +43,6 @@ resource "google_compute_url_map" "global" {
       redirect_response_code = "TEMPORARY_REDIRECT"
       strip_query            = true
     }
-  }
-
-  test {
-    service = google_compute_backend_service.global.id
-    host    = "cgr.dev"
-    path    = "/v2/chainguard/static/manifests/latest"
-  }
-
-  test {
-    service = google_compute_backend_service.global.id
-    host    = "cgr.dev"
-    path    = "/chainguard/static:latest"
-  }
-
-  test {
-    service = google_compute_backend_service.global.id
-    host    = "distroless.dev"
-    path    = "/v2/static/manifests/latest"
   }
 }
 

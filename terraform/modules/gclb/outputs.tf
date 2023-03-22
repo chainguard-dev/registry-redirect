@@ -3,8 +3,5 @@ output "global_ip" {
 }
 
 output "dns-auth" {
-  value = {
-    for auth in google_certificate_manager_dns_authorization.this :
-    auth.domain => auth.dns_resource_record
-  }
+  value = google_certificate_manager_dns_authorization.this.dns_resource_record
 }
