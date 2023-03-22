@@ -6,7 +6,7 @@ crane version >/dev/null \
   || { echo "install crane: https://github.com/google/go-containerregistry/blob/main/cmd/crane"; exit 1; }
 
 # Kill whatever's running on :8080
-kill -9 $(lsof -ti:8080)
+# kill -9 $(lsof -ti:8080)
 
 # Run the redirector in the background, kill it when the script exits.
 go build && ./registry-redirect &
