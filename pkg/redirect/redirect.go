@@ -27,6 +27,18 @@ func redact(in http.Header) http.Header {
 func New() http.Handler {
 	router := mux.NewRouter()
 
+	router.Use(func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(resp http.ResponseWriter, req *http.Request) {
+			ctx := req.Context()
+			logger := logging.FromContext(ctx)
+			logger.Infow("got request",
+				"method", req.Method,
+				"url", req.URL.String(),
+				"header", redact(req.Header))
+			next.ServeHTTP(resp, req)
+		})
+	})
+
 	router.HandleFunc("/v2", v2)
 	router.HandleFunc("/v2/", v2)
 
@@ -38,16 +50,6 @@ func New() http.Handler {
 	// to https://cgr.dev/chainguard/static:latest, which will redirect to a useful place.
 	// Besides that, any other URL will probably end up serving a 404 from cgr.dev.
 	router.HandleFunc("/{rest:.*}", ghpage)
-
-	router.NotFoundHandler = http.HandlerFunc(func(resp http.ResponseWriter, req *http.Request) {
-		ctx := req.Context()
-		logger := logging.FromContext(ctx)
-		logger.Infow("got request",
-			"method", req.Method,
-			"url", req.URL.String(),
-			"header", redact(req.Header))
-		resp.WriteHeader(http.StatusNotFound)
-	})
 	return router
 }
 
