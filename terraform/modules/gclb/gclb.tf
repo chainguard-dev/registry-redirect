@@ -18,32 +18,6 @@ resource "google_compute_url_map" "global" {
   name            = "new-global"
   description     = "direct traffic to the backend service"
   default_service = google_compute_backend_service.global.id
-
-  host_rule {
-    hosts        = [var.domain]
-    path_matcher = "matcher"
-  }
-
-  path_matcher {
-    name = "matcher"
-
-    # Match /v2/* and /token and /chainguard/* and send to the backend service.
-    path_rule {
-      paths   = ["/v2", "/v2/*", "/token", "/chainguard/*"]
-      service = google_compute_backend_service.global.id
-    }
-
-    # Match all other path and redirect to the Chainguard Images marketing page.
-    # See also:
-    # https://cloud.google.com/load-balancing/docs/https/setting-up-global-traffic-mgmt#configure_a_url_redirect
-    default_url_redirect {
-      host_redirect          = "chainguard.dev"
-      https_redirect         = false
-      path_redirect          = "/chainguard-images"
-      redirect_response_code = "TEMPORARY_REDIRECT"
-      strip_query            = true
-    }
-  }
 }
 
 resource "google_compute_target_https_proxy" "global" {
@@ -99,5 +73,5 @@ resource "google_compute_region_network_endpoint_group" "neg" {
 // Enable Compute Engine API.
 resource "google_project_service" "compute" {
   disable_on_destroy = false
-  service = "compute.googleapis.com"
+  service            = "compute.googleapis.com"
 }

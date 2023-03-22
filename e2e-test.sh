@@ -20,5 +20,6 @@ crane digest localhost:8080/nginx
 crane manifest localhost:8080/nginx
 crane ls localhost:8080/nginx
 crane pull localhost:8080/nginx /dev/null
+crane validate --remote=localhost:8080/nginx
 
 echo PASSED

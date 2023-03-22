@@ -241,16 +241,9 @@ func proxy(resp http.ResponseWriter, req *http.Request) {
 		resp.WriteHeader(back.StatusCode)
 	}
 
-	// Unless we're serving blobs, also proxy the response body, if any.
-	// cgr.dev's blob responses should just be a 302 redirect to R2, but
-	// just in case we get a "real" response we'd like to avoid paying
-	// the egress cost to serve it.
-	// Manifests will be served directly and we don't mind paying to proxy
-	// them because they're small.
-	if !strings.Contains(req.URL.Path, "/blobs/") {
-		if _, err := io.Copy(resp, back.Body); err != nil {
-			logger.Errorf("Error copying response body: %v", err)
-		}
+	// Copy response body.
+	if _, err := io.Copy(resp, back.Body); err != nil {
+		logger.Errorf("Error copying response body: %v", err)
 	}
 }
 
@@ -262,6 +255,7 @@ type listResponse struct {
 func ghpage(resp http.ResponseWriter, req *http.Request) {
 	ctx := req.Context()
 	logger := logging.FromContext(ctx)
+
 	url := fmt.Sprintf("https://cgr.dev/chainguard%s", req.URL.Path)
 	logger.Infof("Redirecting %q to %q", req.URL, url)
 	http.Redirect(resp, req, url, http.StatusTemporaryRedirect)
