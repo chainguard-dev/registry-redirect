@@ -27,12 +27,6 @@ resource "google_cloud_run_service" "regions" {
           name  = "REGION"
           value = each.key
         }
-        args = [
-          "--prefix",
-          "chainguard",
-          "--repo",
-          "chainguard-images",
-        ]
       }
       service_account_name  = google_service_account.sa.email
       container_concurrency = 1000

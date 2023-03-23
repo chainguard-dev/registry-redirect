@@ -11,9 +11,6 @@ variable "regions" {
   ]
 }
 
-variable "domains" {
-  type = set(string)
-}
-
-variable "primary_domain" {
+variable "domain" {
+  type = string
 }
